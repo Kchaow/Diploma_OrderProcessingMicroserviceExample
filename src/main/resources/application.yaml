@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: OrderProcessing
+
+server:
+  port: 8005
+  servlet:
+    context-path: /api/v1
+
+integration:
+  notifications-url: http://localhost:8008/api/v1
