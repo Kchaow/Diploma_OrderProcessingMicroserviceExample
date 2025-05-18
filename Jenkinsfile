@@ -1,20 +1,21 @@
-{
+pipeline {
     agent any
 
     environment {
+        MAVEN_HOME = '/usr/share/maven'
         GIT_REPO_URL = 'https://github.com/Kchaow/Diplome_OrderProcessingMicroserviceExample.git'
     }
 
     stages {
         stage('Checkout Code') {
             steps {
-                git "${GIT_REPO_URL}"
+                git branch: 'main', url: "${GIT_REPO_URL}"
             }
         }
 
         stage('Build with Maven') {
             steps {
-                sh 'mvn clean package'
+                sh '${MAVEN_HOME}/bin/mvn clean package'
             }
         }
     }
