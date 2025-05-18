@@ -18,5 +18,11 @@ pipeline {
                 sh '${MAVEN_HOME}/bin/mvn clean package'
             }
         }
+
+        stage('Deploy') {
+            steps {
+                input cancel: 'Нет', message: 'Произвести деплой?', ok: 'Да'
+            }
+        }
     }
 }
