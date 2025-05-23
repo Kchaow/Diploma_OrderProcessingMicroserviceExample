@@ -3,15 +3,17 @@ pipeline {
 
     environment {
         MAVEN_HOME = '/usr/share/maven'
+        M2_REPO = '/var/jenkins_home/.m2/repository'
         GIT_REPO_URL = 'https://github.com/Kchaow/Diplome_OrderProcessingMicroserviceExample.git'
-        MICROSERVICE_NAME = 'order-processing' // Укажите имя вашего микросервиса
-        CHANGE_GRAPH_URL = 'http://localhost:8081/api/v1' // Укажите базовый URL сервиса change-graph
+        MICROSERVICE_NAME = 'order-processing'
+        CHANGE_GRAPH_URL = 'http://host.docker.internal:8081/api/v1'
+        GIT_BRANCH = 'main'
     }
 
     stages {
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: "${GIT_REPO_URL}"
+                git branch: "${GIT_BRANCH}", url: "${GIT_REPO_URL}"
             }
         }
 
@@ -40,29 +42,33 @@ pipeline {
                             contentType: 'APPLICATION_JSON',
                             requestBody: "{\"associatedMicroservices\": [\"${MICROSERVICE_NAME}\"]}"
                         )
+                        graphId = new groovy.json.JsonSlurper().parseText(createGraphResponse.content).id
+                    } else {
+                        graphId = graphIds[0]
                     }
 
-                    graphId = new groovy.json.JsonSlurper().parseText(createGraphResponse.content).id
-
-                    sh "${MAVEN_HOME}/bin/mvn letunov:spec-provider-maven-plugin:1.0-SNAPSHOT:verifyMicroservice -DchangeGraphId=${graphId}"
+                    sh "${MAVEN_HOME}/bin/mvn letunov:contract-scanner-maven-plugin:1.0-SNAPSHOT:verifyMicroservice -DchangeGraphId=${graphId} -DM2_REPO=${M2_REPO} -DmicroserviceIntegrityServerURL=${CHANGE_GRAPH_URL} -e  -\"Dorg.slf4j.simpleLogger.defaultLogLevel\"=DEBUG"
 
                     def attempt = 0
                     def maxAttempt = 15
                     def graphStatus = "WAIT_FOR_COMMIT"
                     def changeGraph = null
-                    while (graphStatus != "DONE") {
+                    while (!graphStatus.equals("DONE")) {
                         def getChangeGraphStatusResponse = httpRequest(
                             url: "${CHANGE_GRAPH_URL}/change-graph/${graphId}",
                             httpMode: 'GET',
                             acceptType: 'APPLICATION_JSON'
                         )
-                        changeGraph = new groovy.json.JsonSlurper().parseText(response)
-                        graphStatus = changeGraph.status
-                        sleep(7)
+                        changeGraph = new HashMap<>(new groovy.json.JsonSlurper().parseText(getChangeGraphStatusResponse.content.toString()))
+                        graphStatus = changeGraph.status.toString()
+                        if (graphStatus.equals("DONE")) {
+                            break
+                        }
                         attempt++
                         if (attempt >= 15) {
-
+                            error("Не удалось проверить целостность графа изменений")
                         }
+                        sleep(7)
                     }
 
                     switch(changeGraph.verificationStatus) {
@@ -75,7 +81,7 @@ pipeline {
                             break
                     }
 
-                    sh "${MAVEN_HOME}/bin/mvn letunov:spec-provider-maven-plugin:1.0-SNAPSHOT:updateMicroserviceGraph"
+                    sh "${MAVEN_HOME}/bin/mvn letunov:contract-scanner-maven-plugin:1.0-SNAPSHOT:updateMicroserviceGraph -DM2_REPO=${M2_REPO} -DmicroserviceIntegrityServerURL=${CHANGE_GRAPH_URL} -e -\"Dorg.slf4j.simpleLogger.defaultLogLevel\"=DEBUG"
                 }
                 echo "Выполняется деплой"
             }
